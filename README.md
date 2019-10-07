@@ -11,14 +11,9 @@ This service uses the provided Gitlab Webhook Token for authentication with the 
 
 Make sure your Gitlab CI pipeline runs Sonarqube Scanner with the branch name (this is a feature of the Developer Edition of Sonarqube)
 
-## Building this docker image
+## Building and running this docker image
 
 ```bash
 docker build -t gitlab-sonarqube-webhook .
-```
-
-## Running this docker image
-
-```bash
 docker run -d -p 8088:80 -e GitlabBaseUrl="https://my.gitlab.url" -e SonarqubeBaseUrl="https://my.sonarqube.url" gitlab-sonarqube-webhook
 ```

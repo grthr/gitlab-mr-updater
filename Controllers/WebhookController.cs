@@ -28,33 +28,54 @@ namespace GitlabSonarqubeWebhook.Controllers
                 return new NoContentResult();
             }
 
-            var sonarqubeProjectId = await GetSonarqubeProjectIdAsync(gitlabApiToken, mergeRequestEvent.Project.Id);
-            var request = CreateRequest(gitlabApiToken, mergeRequestEvent, sonarqubeProjectId);
-
-            using (var client = new HttpClient())
+            using (var gitlabApiClient = CreateGitlabApiClient(gitlabApiToken))
             {
-                var result = await client.SendAsync(request);
-                if (result.StatusCode == HttpStatusCode.Created)
-                {
-                    return new CreatedResult("", await result.Content.ReadAsStringAsync());
-                }
-                return new BadRequestResult();
+                var sonarqubeProjectId = await GetSonarqubeProjectIdAsync(gitlabApiClient, mergeRequestEvent.Project.Id);
+                var comment = "Find results of [SonarQube Branch Analysis](" + SonarqubeBaseUrl + "/dashboard?id=" + sonarqubeProjectId + "&branch=" + mergeRequestEvent.ObjectAttributes.SourceBranch + ")";
+                var result = await CreateMergeRequestComment(gitlabApiClient, comment, mergeRequestEvent);
+                return new CreatedResult("", result);
             }
         }
 
-        private async Task<string> GetSonarqubeProjectIdAsync(string gitlabApiToken, int projectId)
+        private HttpClient CreateGitlabApiClient(string gitlabApiToken)
         {
-            using (var client = new HttpClient())
-            {
-                client.DefaultRequestHeaders.Add("Private-Token", gitlabApiToken);
-                var response = await client.GetAsync(GitlabBaseUrl + "/api/v4/projects/" + projectId + "/variables/SONARQUBE_PROJECT_ID");
-                response.EnsureSuccessStatusCode();
-                var variableDetails = await response.Content.ReadAsAsync<VariableDetails>();
-                return variableDetails.Value;
-            }
+            var client = new HttpClient();
+            client.DefaultRequestHeaders.Add("Private-Token", gitlabApiToken);
+            return client;
         }
 
-        private HttpRequestMessage CreateRequest(string gitlabApiToken, MergeRequestEvent mergeRequestEvent, string sonarqubeProjectId)
+        private Uri CreateMergeRequestCommentUri(string comment, int projectId, int mergeRequestIid)
+        {
+            var query = HttpUtility.ParseQueryString(string.Empty);
+            query["body"] = comment;
+
+            var builder = new UriBuilder(GitlabBaseUrl)
+            {
+                Path = "/api/v4/projects/" + projectId + "/merge_requests/" + mergeRequestIid + "/discussions",
+                Query = query.ToString()
+            };
+
+            return builder.Uri;
+        }
+
+        private async Task<string> CreateMergeRequestComment(HttpClient gitlabApiClient, string comment, MergeRequestEvent mergeRequestEvent)
+        {
+            var requestUri = CreateMergeRequestCommentUri(comment, mergeRequestEvent.Project.Id, mergeRequestEvent.ObjectAttributes.Iid);
+
+            var response = await gitlabApiClient.PostAsync(requestUri, new StringContent(""));
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadAsStringAsync();
+        }
+
+        private async Task<string> GetSonarqubeProjectIdAsync(HttpClient gitlabApiClient, int projectId)
+        {
+            var response = await gitlabApiClient.GetAsync(GitlabBaseUrl + "/api/v4/projects/" + projectId + "/variables/SONARQUBE_PROJECT_ID");
+            response.EnsureSuccessStatusCode();
+            var variableDetails = await response.Content.ReadAsAsync<VariableDetails>();
+            return variableDetails.Value;
+        }
+
+        private Uri CreateRequestUri(MergeRequestEvent mergeRequestEvent, string sonarqubeProjectId)
         {
             var value = "Find results of [SonarQube Branch Analysis](" + SonarqubeBaseUrl + "/dashboard?id=" + sonarqubeProjectId + "&branch=" + mergeRequestEvent.ObjectAttributes.SourceBranch + ")";
 
@@ -67,12 +88,7 @@ namespace GitlabSonarqubeWebhook.Controllers
                 Query = query.ToString()
             };
 
-            return new HttpRequestMessage
-            {
-                RequestUri = builder.Uri,
-                Method = HttpMethod.Post,
-                Headers = { { "Private-Token", gitlabApiToken } },
-            };
+            return builder.Uri;
         }
     }
 }

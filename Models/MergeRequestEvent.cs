@@ -25,7 +25,7 @@ namespace GitlabSonarqubeWebhook.Models
     {
         [JsonProperty("iid")]
         [JsonRequired]
-        public string Iid { get; internal set; }
+        public int Iid { get; internal set; }
 
         [JsonProperty("source_branch")]
         [JsonRequired]
